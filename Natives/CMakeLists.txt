@@ -15,6 +15,12 @@ if("${CMAKE_HOST_SYSTEM_NAME}" MATCHES "Linux|^GNU$|Android")
   set(GLOBAL_LDFLAGS "-isysroot ${CMAKE_OSX_SYSROOT} -Wl,-syslibroot,${CMAKE_OSX_SYSROOT} -fuse-ld=lld")
 endif()
 
+# Framework search paths used for linking libraries that depend on bundled frameworks
+set(FRAMEWORK_SEARCH_FLAGS
+  "-F'${CMAKE_CURRENT_LIST_DIR}/build'"
+  "-F'${CMAKE_CURRENT_LIST_DIR}/resources/Frameworks'"
+)
+
 set(CMAKE_FRAMEWORK_PATH "${CMAKE_CURRENT_LIST_DIR}/resources/Frameworks")
 
 include_directories(
@@ -53,10 +59,10 @@ add_library(AFNetworking SHARED
   external/AFNetworking/UIKit+AFNetworking/UIButton+AFNetworking.m
   external/AFNetworking/UIKit+AFNetworking/UIImageView+AFNetworking.m
 )
-# AFNetworking uses UIKit, CoreGraphics, SystemConfiguration, Security, MobileCoreServices (or UTType) and ImageIO functionality.
-# Link those frameworks to AFNetworking so the AFNetworking dylib can be linked properly.
+# AFNetworking needs system frameworks; also ensure framework search paths are present
 target_link_libraries(AFNetworking
   PUBLIC
+  ${FRAMEWORK_SEARCH_FLAGS}
   "-framework Foundation"
   "-framework UIKit"
   "-framework CoreGraphics"
@@ -83,24 +89,23 @@ target_link_libraries(awt_xawt
 
 set(CMAKE_FRAMEWORK_PATH "${CMAKE_CURRENT_LIST_DIR}/resources/Frameworks")
 
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rpath @executable_path/Frameworks -rpath @loader_path/Frameworks")
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -rpath @executable_path/Frameworks -rpath @loader_path/Frameworks")
-
 # ANGLE wrapper for 1.17+
 add_library(tinygl4angle SHARED
   external/gl4es/string_utils.c
   external/gl4es/tinygl4angle.c
 )
-# tinygl4angle uses EGL / GLES symbols; link the frameworks/libraries providing them.
+# tinygl4angle requires EGL/GLES symbols. Add framework search flags so -framework libEGL / libGLESv2
+# can be found from resources/Frameworks or build/ if bundled there.
 target_link_libraries(tinygl4angle
   PUBLIC
+  ${FRAMEWORK_SEARCH_FLAGS}
   "-framework libEGL"
   "-framework libGLESv2"
 )
 
 set(CMAKE_FRAMEWORK_PATH "${CMAKE_CURRENT_LIST_DIR}/resources/Frameworks")
 
-# Link flags for iOS frameworks
+# Link flags for iOS frameworks (kept for main target)
 set(EXTRA_FRAMEWORKS
   "-F'${CMAKE_CURRENT_LIST_DIR}/build'"
   "-F'${CMAKE_CURRENT_LIST_DIR}/resources/Frameworks'"
@@ -247,7 +252,7 @@ endif()
 target_link_libraries(AngelAuraAmethyst
   PUBLIC AFNetworking
   lzma
-  "-F'${CMAKE_CURRENT_LIST_DIR}/build'"
+  ${FRAMEWORK_SEARCH_FLAGS}
   "-F'${CMAKE_CURRENT_LIST_DIR}/resources/Frameworks'"
   "-framework AltKit"
   "-framework AuthenticationServices"
