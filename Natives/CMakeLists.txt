@@ -96,8 +96,9 @@ add_library(AmethystAccountJNI SHARED
 )
 target_link_libraries(AmethystAccountJNI)
 
-# Angel Aura Amethyst
-add_executable(AngelAuraAmethyst
+# Prepare source list for the main executable.
+# Required / known sources:
+set(SOURCES
   dyld_bypass_validation.m
   dyld_patch_platform.m
   main.m
@@ -110,13 +111,6 @@ add_executable(AngelAuraAmethyst
   authenticator/LocalAuthenticator.m
   authenticator/MicrosoftAuthenticator.m
   authenticator/ThirdPartyAuthenticator.m
-
-  CallbackBridge.m
-  MathUtils.m
-  localize.m
-  showDialog.m
-  parseJSONFromFile.m
-  customNSLog.m
 
   ctxbridges/gl_bridge.m
   ctxbridges/osm_bridge.m
@@ -186,13 +180,36 @@ add_executable(AngelAuraAmethyst
   ios_uikit_bridge.m
   utils.m
 
-  # Mod-related sources (ensure implementations are compiled and linked)
+  # Mod-related sources (ensure implementations are compiled and linked if present)
   ModItem.m
   ModService.m
   ModTableViewCell.m
   ModTableViewController.m
   ModsManagerViewController.m
 )
+
+# Optional helper/source files that may not exist in all branches/trees.
+# Add them only if they exist to avoid CMake complaining about missing sources.
+set(OPTIONAL_FILES
+  CallbackBridge.m
+  MathUtils.m
+  localize.m
+  showDialog.m
+  parseJSONFromFile.m
+  customNSLog.m
+)
+
+foreach(_f IN LISTS OPTIONAL_FILES)
+  if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/${_f}")
+    list(APPEND SOURCES ${_f})
+    message(STATUS "Including optional source: ${_f}")
+  else()
+    message(STATUS "Optional source not found, skipping: ${_f}")
+  endif()
+endforeach()
+
+# Create the executable target with the collected sources.
+add_executable(AngelAuraAmethyst ${SOURCES})
 
 # Add ModLoaderIcons PNG files into the app bundle Resources/ModLoaderIcons so they are available at runtime.
 # This will copy all *.png under Natives/ModLoaderIcons into the bundle at Resources/ModLoaderIcons/<name>.png
@@ -271,6 +288,7 @@ target_link_libraries(AngelAuraAmethyst
   "-framework WebKit"
   "-weak_framework SafariServices"
 )
+
 set_target_properties(AngelAuraAmethyst PROPERTIES
   MACOSX_BUNDLE TRUE
   MACOSX_FRAMEWORK_IDENTIFIER org.cmake.ExecutableTarget
