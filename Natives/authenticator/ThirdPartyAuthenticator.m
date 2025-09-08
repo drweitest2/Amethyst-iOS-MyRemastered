@@ -1,5 +1,5 @@
+#import "ThirdPartyAuthenticator.h"
 #import "AFNetworking.h"
-#import "BaseAuthenticator.h"
 #import "../utils.h"
 #import "../ios_uikit_bridge.h"
 
