@@ -53,8 +53,18 @@ add_library(AFNetworking SHARED
   external/AFNetworking/UIKit+AFNetworking/UIButton+AFNetworking.m
   external/AFNetworking/UIKit+AFNetworking/UIImageView+AFNetworking.m
 )
+# AFNetworking uses UIKit, CoreGraphics, SystemConfiguration, Security, MobileCoreServices (or UTType) and ImageIO functionality.
+# Link those frameworks to AFNetworking so the AFNetworking dylib can be linked properly.
 target_link_libraries(AFNetworking
+  PUBLIC
   "-framework Foundation"
+  "-framework UIKit"
+  "-framework CoreGraphics"
+  "-framework Security"
+  "-framework SystemConfiguration"
+  "-framework ImageIO"
+  "-framework MobileCoreServices"
+  "-framework UniformTypeIdentifiers"
 )
 
 # Add headless & xawt stubs
@@ -81,7 +91,12 @@ add_library(tinygl4angle SHARED
   external/gl4es/string_utils.c
   external/gl4es/tinygl4angle.c
 )
-target_link_libraries(tinygl4angle)
+# tinygl4angle uses EGL / GLES symbols; link the frameworks/libraries providing them.
+target_link_libraries(tinygl4angle
+  PUBLIC
+  "-framework libEGL"
+  "-framework libGLESv2"
+)
 
 set(CMAKE_FRAMEWORK_PATH "${CMAKE_CURRENT_LIST_DIR}/resources/Frameworks")
 
