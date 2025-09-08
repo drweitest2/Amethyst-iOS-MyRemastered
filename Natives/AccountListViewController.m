@@ -137,9 +137,14 @@
 
         [controller addAction:[UIAlertAction actionWithTitle:localize(@"OK", nil) style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
             NSArray *textFields = controller.textFields;
-            NSString *server = [textFields[0].text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-            NSString *username = textFields[1].text;
-            NSString *password = textFields[2].text;
+            // Cast elements to UITextField before accessing .text to satisfy the compiler
+            UITextField *serverField = (UITextField *)textFields[0];
+            UITextField *usernameField = (UITextField *)textFields[1];
+            UITextField *passwordField = (UITextField *)textFields[2];
+
+            NSString *server = [serverField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            NSString *username = usernameField.text;
+            NSString *password = passwordField.text;
 
             if (server.length == 0 || username.length == 0 || password.length == 0) {
                 showDialog(localize(@"Error", nil), @"请填写完整信息");
@@ -158,6 +163,7 @@
                 });
             };
 
+            // Use the designated initializer; ThirdPartyAuthenticator.h exposes initWithData:
             [[[ThirdPartyAuthenticator alloc] initWithData:data] loginWithCallback:callback];
         }]];
         [controller addAction:[UIAlertAction actionWithTitle:localize(@"Cancel", nil) style:UIAlertActionStyleCancel handler:nil]];
@@ -195,7 +201,7 @@
     }];
     [controller addAction:[UIAlertAction actionWithTitle:localize(@"OK", nil) style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSArray *textFields = controller.textFields;
-        UITextField *usernameField = textFields[0];
+        UITextField *usernameField = (UITextField *)textFields[0];
         if (usernameField.text.length < 3 || usernameField.text.length > 16) {
             UIAlertController *controller = [UIAlertController alertControllerWithTitle:localize(@"Error", nil) message:localize(@"login.error.username.outOfRange", nil) preferredStyle:UIAlertControllerStyleAlert];
             [controller addAction:[UIAlertAction actionWithTitle:localize(@"OK", nil) style:UIAlertActionStyleDefault handler:nil]];
