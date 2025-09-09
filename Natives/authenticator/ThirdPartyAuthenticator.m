@@ -44,7 +44,11 @@
 
     AFHTTPSessionManager *manager = AFHTTPSessionManager.manager;
     manager.requestSerializer = AFJSONRequestSerializer.serializer;
-    manager.responseSerializer = AFJSONResponseSerializer.serializer;
+    // Ensure we accept common JSON-ish content types including some servers that return text/plain
+    AFJSONResponseSerializer *jsonSerializer = AFJSONResponseSerializer.serializer;
+    jsonSerializer.acceptableContentTypes = [jsonSerializer.acceptableContentTypes setByAddingObject:@"text/plain"];
+    manager.responseSerializer = jsonSerializer;
+
     [manager POST:url parameters:body headers:nil progress:nil success:^(NSURLSessionDataTask *task, NSDictionary *response) {
         NSString *access = response[@"accessToken"];
         NSString *client = response[@"clientToken"];
@@ -86,10 +90,16 @@
 
         callback(nil, YES);
     } failure:^(NSURLSessionDataTask *task, NSError *error) {
+        // Preserve response body in the NSError.userInfo so UI/logging code can show it.
         NSData *data = error.userInfo[AFNetworkingOperationFailingURLResponseDataErrorKey];
         if (data) {
             NSString *s = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-            callback([NSError errorWithDomain:@"ThirdPartyAuthenticator" code:error.code userInfo:@{NSLocalizedDescriptionKey:s ?: error.localizedDescription}], NO);
+            // Build a new userInfo that preserves original keys and includes meaningful description + original data
+            NSMutableDictionary *userInfo = [error.userInfo mutableCopy] ?: [NSMutableDictionary new];
+            if (s) userInfo[NSLocalizedDescriptionKey] = s;
+            userInfo[AFNetworkingOperationFailingURLResponseDataErrorKey] = data;
+            NSError *newErr = [NSError errorWithDomain:error.domain code:error.code userInfo:userInfo];
+            callback(newErr, NO);
         } else {
             callback(error, NO);
         }
@@ -115,7 +125,10 @@
 
     AFHTTPSessionManager *manager = AFHTTPSessionManager.manager;
     manager.requestSerializer = AFJSONRequestSerializer.serializer;
-    manager.responseSerializer = AFJSONResponseSerializer.serializer;
+    AFJSONResponseSerializer *jsonSerializer = AFJSONResponseSerializer.serializer;
+    jsonSerializer.acceptableContentTypes = [jsonSerializer.acceptableContentTypes setByAddingObject:@"text/plain"];
+    manager.responseSerializer = jsonSerializer;
+
     [manager POST:url parameters:body headers:nil progress:nil success:^(NSURLSessionDataTask *task, NSDictionary *response) {
         NSString *access = response[@"accessToken"];
         NSDictionary *profile = response[@"selectedProfile"];
@@ -127,7 +140,10 @@
             self.authData[@"oldusername"] = self.authData[@"username"];
             if (profile[@"name"]) self.authData[@"username"] = profile[@"name"];
         }
+
+        // Many servers don't return expiry on refresh; keep a default of 1 day.
         self.authData[@"expiresAt"] = @((long)[NSDate.date timeIntervalSince1970] + 86400);
+
         BOOL saved = [super saveChanges];
         callback(nil, saved);
     } failure:^(NSURLSessionDataTask *task, NSError *error) {
