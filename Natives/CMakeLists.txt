@@ -31,12 +31,15 @@ include_directories(
   "external/Apple"
   "external/ballpa1n"
   "external/ballpa1n/wrapped"
+  # Added for TouchController integration
+  "TouchController"
 )
 
 # For cacio support library
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -rpath @loader_path -rpath @executable_path/java_runtimes/java-8-openjdk/lib -rpath /usr/lib/jvm/java-8-openjdk/lib")
 
 # EXT: stub library, delete after compile awt_xawt
+
 add_library(awt_headless SHARED
   awt_xawt/empty.m
 )
@@ -83,18 +86,13 @@ add_library(AFNetworking SHARED
   external/AFNetworking/UIKit+AFNetworking/UIImageView+AFNetworking.m
 )
 target_link_libraries(AFNetworking
-  "-framework CoreGraphics"
-  "-framework CoreServices"
-  "-framework Security"
-  "-framework SystemConfiguration"
-  "-framework UIKit"
+  "${GLOBAL_LDFLAGS}"
 )
 
-# MinecraftAccount JNI
-add_library(AmethystAccountJNI SHARED
-  authenticator/MinecraftAccountJNI.m
-)
-target_link_libraries(AmethystAccountJNI)
+set(CMAKE_FRAMEWORK_PATH "${CMAKE_CURRENT_LIST_DIR}/resources/Frameworks")
+
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rpath @executable_path/Frameworks -rpath @loader_path/Frameworks")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -rpath @executable_path/Frameworks -rpath @loader_path/Frameworks")
 
 # Prepare source list for the main executable.
 # Required / known sources:
@@ -121,6 +119,7 @@ set(SOURCES
   customcontrols/ControlLayout.m
   customcontrols/ControlSubButton.m
   customcontrols/CustomControlsUtils.m
+
   customcontrols/NSPredicateUtilitiesExternal.m
 
   external/DBNumberedSlider/Classes/DBNumberedSlider.m
@@ -153,6 +152,7 @@ set(SOURCES
   LauncherNavigationController.m
   LauncherNewsViewController.m
   LauncherPreferences.m
+
   LauncherPreferencesViewController.m
   LauncherPrefContCfgViewController.m
   LauncherPrefGameDirViewController.m
@@ -189,7 +189,6 @@ set(SOURCES
 )
 
 # Optional helper/source files that may not exist in all branches/trees.
-# Add them only if they exist to avoid CMake complaining about missing sources.
 set(OPTIONAL_FILES
   CallbackBridge.m
   MathUtils.m
@@ -208,63 +207,38 @@ foreach(_f IN LISTS OPTIONAL_FILES)
   endif()
 endforeach()
 
+# Add our TouchController integration sources (added to SOURCES so they get compiled into the main executable)
+# These files are optional; include only if present to avoid breaking builds on branches without them.
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/TouchController/TCProtocol.m")
+  list(APPEND SOURCES
+    TouchController/TCProtocol.m
+  )
+  target_include_directories(AngelAuraAmethyst PUBLIC "${CMAKE_CURRENT_LIST_DIR}/TouchController")
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/TouchController/TCTransport.m")
+  list(APPEND SOURCES
+    TouchController/TCTransport.m
+  )
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/TouchController/SurfaceViewController+TouchControllerIntegration.m")
+  list(APPEND SOURCES
+    TouchController/SurfaceViewController+TouchControllerIntegration.m
+  )
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/TouchController/TCBootstrap.m")
+  list(APPEND SOURCES
+    TouchController/TCBootstrap.m
+  )
+endif()
+
 # Create the executable target with the collected sources.
 add_executable(AngelAuraAmethyst ${SOURCES})
 
-# Add ModLoaderIcons PNG files into the app bundle Resources/ModLoaderIcons so they are available at runtime.
-# This will copy all *.png under Natives/ModLoaderIcons into the bundle at Resources/ModLoaderIcons/<name>.png
-set(MODLOADER_ICONS_DIR "${CMAKE_CURRENT_LIST_DIR}/ModLoaderIcons")
-if(EXISTS "${MODLOADER_ICONS_DIR}")
-  file(GLOB MODLOADER_ICON_FILES "${MODLOADER_ICONS_DIR}/*.png")
-  if(MODLOADER_ICON_FILES)
-    foreach(_icon ${MODLOADER_ICON_FILES})
-      get_filename_component(_name ${_icon} NAME)
-      message(STATUS "Including mod loader icon in bundle: ${_name}")
-      # Place into Resources/ModLoaderIcons inside the .app bundle so your code can find resourcePath/ModLoaderIcons/...
-      set_source_files_properties(${_icon} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/ModLoaderIcons")
-    endforeach()
-    # Attach the resource files to the main executable target so CMake copies them into the bundle
-    target_sources(AngelAuraAmethyst PRIVATE ${MODLOADER_ICON_FILES})
-  endif()
-else()
-  message(STATUS "ModLoaderIcons directory not found: ${MODLOADER_ICONS_DIR}")
-endif()
-
-if("${CMAKE_HOST_SYSTEM_NAME}" MATCHES "Linux|^GNU$|Android")
-  target_sources(AngelAuraAmethyst PUBLIC non_darwin_utils.m)
-endif()
-
-# Option to enable minizip; default OFF to avoid build failures if zlib-ng is not present.
-option(MINIZIP_ENABLED "Enable building bundled minizip (requires zlib/zlib-ng)" OFF)
-
-# Optionally add minizip sources only if the directory exists AND MINIZIP_ENABLED is ON.
-set(MINIZIP_DIR "${CMAKE_CURRENT_LIST_DIR}/minizip")
-if(MINIZIP_ENABLED AND EXISTS "${MINIZIP_DIR}")
-  file(GLOB MINIZIP_SRCS
-    "${MINIZIP_DIR}/*.c"
-    "${MINIZIP_DIR}/*.m"
-    "${MINIZIP_DIR}/*.cpp"
-    "${MINIZIP_DIR}/*.cc"
-  )
-  if(MINIZIP_SRCS)
-    message(STATUS "Found minizip sources: ${MINIZIP_SRCS}")
-    target_sources(AngelAuraAmethyst PRIVATE ${MINIZIP_SRCS})
-    target_include_directories(AngelAuraAmethyst PRIVATE "${MINIZIP_DIR}")
-    # Link zlib if available - on macOS the library is 'z'
-    find_library(ZLIB_LIB z)
-    if(ZLIB_LIB)
-      target_link_libraries(AngelAuraAmethyst PUBLIC ${ZLIB_LIB})
-    endif()
-  else()
-    message(STATUS "minizip folder exists but no source files found.")
-  endif()
-else()
-  if(EXISTS "${MINIZIP_DIR}")
-    message(STATUS "minizip folder found but MINIZIP_ENABLED is OFF — skipping compilation.")
-  else()
-    message(STATUS "minizip folder not found, skipping minizip compilation.")
-  endif()
-endif()
+# include framework and linker flags
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -rpath @loader_path -rpath @executable_path/java_runtimes/java-8-openjdk/lib -rpath /usr/lib/jvm/java-8-openjdk/lib")
 
 target_link_libraries(AngelAuraAmethyst
   PUBLIC AFNetworking
@@ -293,3 +267,55 @@ set_target_properties(AngelAuraAmethyst PROPERTIES
   MACOSX_BUNDLE TRUE
   MACOSX_FRAMEWORK_IDENTIFIER org.cmake.ExecutableTarget
   MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/Info.plist")
+
+# For minizip option (kept from original CMakeLists)
+option(MINIZIP_ENABLED "Enable building bundled minizip (requires zlib/zlib-ng)" OFF)
+set(MINIZIP_DIR "${CMAKE_CURRENT_LIST_DIR}/minizip")
+if(MINIZIP_ENABLED AND EXISTS "${MINIZIP_DIR}")
+  file(GLOB MINIZIP_SRCS
+    "${MINIZIP_DIR}/*.c"
+    "${MINIZIP_DIR}/*.m"
+    "${MINIZIP_DIR}/*.cpp"
+    "${MINIZIP_DIR}/*.cc"
+  )
+  if(MINIZIP_SRCS)
+    message(STATUS "Found minizip sources: ${MINIZIP_SRCS}")
+    target_sources(AngelAuraAmethyst PRIVATE ${MINIZIP_SRCS})
+    target_include_directories(AngelAuraAmethyst PRIVATE "${MINIZIP_DIR}")
+    find_library(ZLIB_LIB z)
+    if(ZLIB_LIB)
+      target_link_libraries(AngelAuraAmethyst PUBLIC ${ZLIB_LIB})
+    endif()
+  else()
+    message(STATUS "minizip folder exists but no source files found.")
+  endif()
+else()
+  if(EXISTS "${MINIZIP_DIR}")
+    message(STATUS "minizip folder found but MINIZIP_ENABLED is OFF — skipping compilation.")
+  else()
+    message(STATUS "minizip folder not found, skipping minizip compilation.")
+  endif()
+endif()
+
+# Resource handling for ModLoaderIcons (keep existing behavior)
+set(MODLOADER_ICONS_DIR "${CMAKE_CURRENT_LIST_DIR}/ModLoaderIcons")
+if(EXISTS "${MODLOADER_ICONS_DIR}")
+  file(GLOB MODLOADER_ICON_FILES "${MODLOADER_ICONS_DIR}/*.png")
+  if(MODLOADER_ICON_FILES)
+    foreach(_icon ${MODLOADER_ICON_FILES})
+      get_filename_component(_name ${_icon} NAME)
+      message(STATUS "Including mod loader icon in bundle: ${_name}")
+      set_source_files_properties(${_icon} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/ModLoaderIcons")
+    endforeach()
+    target_sources(AngelAuraAmethyst PRIVATE ${MODLOADER_ICON_FILES})
+  endif()
+else()
+  message(STATUS "ModLoaderIcons directory not found: ${MODLOADER_ICONS_DIR}")
+endif()
+
+# If on non-Darwin platforms some non-darwin utils are required
+if("${CMAKE_HOST_SYSTEM_NAME}" MATCHES "Linux|^GNU$|Android")
+  target_sources(AngelAuraAmethyst PUBLIC non_darwin_utils.m)
+endif()
+
+# End of CMakeLists
