@@ -17,6 +17,7 @@ if("${CMAKE_HOST_SYSTEM_NAME}" MATCHES "Linux|^GNU$|Android")
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${GLOBAL_LDFLAGS}")
 endif()
 
+# Global include directories (keeps previous behavior)
 include_directories(
   "."
   "external/AFNetworking/AFNetworking"
@@ -31,8 +32,7 @@ include_directories(
   "external/Apple"
   "external/ballpa1n"
   "external/ballpa1n/wrapped"
-  # Added for TouchController integration
-  "TouchController"
+  # Note: we will add per-target include for TouchController AFTER the target is created
 )
 
 # For cacio support library
@@ -88,11 +88,6 @@ add_library(AFNetworking SHARED
 target_link_libraries(AFNetworking
   "${GLOBAL_LDFLAGS}"
 )
-
-set(CMAKE_FRAMEWORK_PATH "${CMAKE_CURRENT_LIST_DIR}/resources/Frameworks")
-
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rpath @executable_path/Frameworks -rpath @loader_path/Frameworks")
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -rpath @executable_path/Frameworks -rpath @loader_path/Frameworks")
 
 # Prepare source list for the main executable.
 # Required / known sources:
@@ -207,35 +202,41 @@ foreach(_f IN LISTS OPTIONAL_FILES)
   endif()
 endforeach()
 
-# Add our TouchController integration sources (added to SOURCES so they get compiled into the main executable)
-# These files are optional; include only if present to avoid breaking builds on branches without them.
-if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/TouchController/TCProtocol.m")
-  list(APPEND SOURCES
-    TouchController/TCProtocol.m
-  )
-  target_include_directories(AngelAuraAmethyst PUBLIC "${CMAKE_CURRENT_LIST_DIR}/TouchController")
+# Add our TouchController integration sources (we will attach them to the target AFTER add_executable)
+set(TOUCH_DIR "${CMAKE_CURRENT_LIST_DIR}/TouchController")
+set(TOUCH_SOURCES "")
+if(EXISTS "${TOUCH_DIR}/TCProtocol.m")
+  list(APPEND TOUCH_SOURCES "${TOUCH_DIR}/TCProtocol.m")
 endif()
-
-if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/TouchController/TCTransport.m")
-  list(APPEND SOURCES
-    TouchController/TCTransport.m
-  )
+if(EXISTS "${TOUCH_DIR}/TCTransport.m")
+  list(APPEND TOUCH_SOURCES "${TOUCH_DIR}/TCTransport.m")
 endif()
-
-if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/TouchController/SurfaceViewController+TouchControllerIntegration.m")
-  list(APPEND SOURCES
-    TouchController/SurfaceViewController+TouchControllerIntegration.m
-  )
+if(EXISTS "${TOUCH_DIR}/SurfaceViewController+TouchControllerIntegration.m")
+  list(APPEND TOUCH_SOURCES "${TOUCH_DIR}/SurfaceViewController+TouchControllerIntegration.m")
 endif()
-
-if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/TouchController/TCBootstrap.m")
-  list(APPEND SOURCES
-    TouchController/TCBootstrap.m
-  )
+if(EXISTS "${TOUCH_DIR}/TCBootstrap.m")
+  list(APPEND TOUCH_SOURCES "${TOUCH_DIR}/TCBootstrap.m")
 endif()
 
 # Create the executable target with the collected sources.
 add_executable(AngelAuraAmethyst ${SOURCES})
+
+# Now that target exists, attach TouchController sources and include directory (if any)
+if(TOUCH_SOURCES)
+  # TOUCH_SOURCES may be empty string; handle properly:
+  foreach(_ts IN LISTS TOUCH_SOURCES)
+    if(EXISTS "${_ts}")
+      target_sources(AngelAuraAmethyst PRIVATE "${_ts}")
+      message(STATUS "Added TouchController source to target: ${_ts}")
+    endif()
+  endforeach()
+  if(EXISTS "${TOUCH_DIR}")
+    target_include_directories(AngelAuraAmethyst PRIVATE "${TOUCH_DIR}")
+    message(STATUS "Added TouchController include dir: ${TOUCH_DIR}")
+  endif()
+else()
+  message(STATUS "No TouchController sources found in ${TOUCH_DIR}; skipping integration files.")
+endif()
 
 # include framework and linker flags
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -rpath @loader_path -rpath @executable_path/java_runtimes/java-8-openjdk/lib -rpath /usr/lib/jvm/java-8-openjdk/lib")
