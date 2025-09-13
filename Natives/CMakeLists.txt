@@ -85,9 +85,28 @@ add_library(AFNetworking SHARED
   external/AFNetworking/UIKit+AFNetworking/UIButton+AFNetworking.m
   external/AFNetworking/UIKit+AFNetworking/UIImageView+AFNetworking.m
 )
+# Link AFNetworking against frameworks it uses to resolve symbols at AFNetworking.dylib link time.
+# CoreGraphics: CGBitmapContextCreate / CGImage* functions
+# UIKit: UIApplication/UIButton/UIImage/UIImageView
+# Security: SecTrust* / SecCertificate*
+# SystemConfiguration: SCNetworkReachability*
+# MobileCoreServices / UniformTypeIdentifiers: UTType / UT* helpers used by AFNetworking
+# ImageIO: CGImage creation helpers
 target_link_libraries(AFNetworking
-  "${GLOBAL_LDFLAGS}"
+  PRIVATE
+    "-framework CoreGraphics"
+    "-framework UIKit"
+    "-framework Security"
+    "-framework SystemConfiguration"
+    "-framework MobileCoreServices"
+    "-framework ImageIO"
+    "-framework UniformTypeIdentifiers"
 )
+
+set(CMAKE_FRAMEWORK_PATH "${CMAKE_CURRENT_LIST_DIR}/resources/Frameworks")
+
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rpath @executable_path/Frameworks -rpath @loader_path/Frameworks")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -rpath @executable_path/Frameworks -rpath @loader_path/Frameworks")
 
 # Prepare source list for the main executable.
 # Required / known sources:
@@ -223,7 +242,6 @@ add_executable(AngelAuraAmethyst ${SOURCES})
 
 # Now that target exists, attach TouchController sources and include directory (if any)
 if(TOUCH_SOURCES)
-  # TOUCH_SOURCES may be empty string; handle properly:
   foreach(_ts IN LISTS TOUCH_SOURCES)
     if(EXISTS "${_ts}")
       target_sources(AngelAuraAmethyst PRIVATE "${_ts}")
