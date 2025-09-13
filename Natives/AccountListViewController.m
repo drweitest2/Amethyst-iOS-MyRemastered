@@ -1,7 +1,6 @@
 #import <AuthenticationServices/AuthenticationServices.h>
 
 #import "authenticator/BaseAuthenticator.h"
-#import "authenticator/ThirdPartyAuthenticator.h"
 #import "AccountListViewController.h"
 #import "AFNetworking.h"
 #import "LauncherPreferences.h"
@@ -103,76 +102,54 @@
     [[BaseAuthenticator loadSavedName:self.accountList[indexPath.row][@"username"]] refreshTokenWithCallback:callback];
 }
 
+- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (editingStyle == UITableViewCellEditingStyleDelete) {
+        // TODO: invalidate token
+
+        NSString *str = self.accountList[indexPath.row][@"username"];
+        NSFileManager *fm = [NSFileManager defaultManager];
+        NSString *path = [NSString stringWithFormat:@"%s/accounts/%@.json", getenv("POJAV_HOME"), str];
+        if (self.whenDelete != nil) {
+            self.whenDelete(str);
+        }
+        NSString *xuid = self.accountList[indexPath.row][@"xuid"];
+        if (xuid) {
+            [MicrosoftAuthenticator clearTokenDataOfProfile:xuid];
+        }
+        [fm removeItemAtPath:path error:nil];
+        [self.accountList removeObjectAtIndex:indexPath.row];
+        [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
+    }
+}
+
+- (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    if (indexPath.row == self.accountList.count) {
+        return UITableViewCellEditingStyleNone;
+    } else {
+        return UITableViewCellEditingStyleDelete;
+    }
+}
+
+- (NSDictionary *)parseQueryItems:(NSString *)url {
+    NSMutableDictionary *result = [NSMutableDictionary new];
+    NSArray<NSURLQueryItem *> *queryItems = [NSURLComponents componentsWithString:url].queryItems;
+    for (NSURLQueryItem *item in queryItems) {
+        result[item.name] = item.value;
+    }
+    return result;
+}
+
 - (void)actionAddAccount:(UITableViewCell *)sender {
     UIAlertController *picker = [UIAlertController alertControllerWithTitle:nil message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     UIAlertAction *actionMicrosoft = [UIAlertAction actionWithTitle:localize(@"login.option.microsoft", nil) style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         [self actionLoginMicrosoft:sender];
     }];
     [picker addAction:actionMicrosoft];
-
     UIAlertAction *actionLocal = [UIAlertAction actionWithTitle:localize(@"login.option.local", nil) style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         [self actionLoginLocal:sender];
     }];
     [picker addAction:actionLocal];
-
-    // Third-party Yggdrasil action
-    UIAlertAction *actionThirdParty = [UIAlertAction actionWithTitle:@"第三方认证账户" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        UIAlertController *controller = [UIAlertController alertControllerWithTitle:@"第三方认证" message:@"请输入认证服务器地址、用户名和密码\n支持所有 Yggdrasil 兼容服务器" preferredStyle:UIAlertControllerStyleAlert];
-        [controller addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-            textField.placeholder = @"认证服务器地址（例如 https://authserver.example.com）";
-            textField.clearButtonMode = UITextFieldViewModeWhileEditing;
-            textField.borderStyle = UITextBorderStyleRoundedRect;
-        }];
-        [controller addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-            textField.placeholder = localize(@"login.alert.field.username", nil);
-            textField.clearButtonMode = UITextFieldViewModeWhileEditing;
-            textField.borderStyle = UITextBorderStyleRoundedRect;
-        }];
-        [controller addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-            textField.placeholder = localize(@"login.alert.field.password", nil);
-            textField.secureTextEntry = YES;
-            textField.clearButtonMode = UITextFieldViewModeWhileEditing;
-            textField.borderStyle = UITextBorderStyleRoundedRect;
-        }];
-
-        [controller addAction:[UIAlertAction actionWithTitle:localize(@"OK", nil) style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-            NSArray *textFields = controller.textFields;
-            // Cast elements to UITextField before accessing .text to satisfy the compiler
-            UITextField *serverField = (UITextField *)textFields[0];
-            UITextField *usernameField = (UITextField *)textFields[1];
-            UITextField *passwordField = (UITextField *)textFields[2];
-
-            NSString *server = [serverField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-            NSString *username = usernameField.text;
-            NSString *password = passwordField.text;
-
-            if (server.length == 0 || username.length == 0 || password.length == 0) {
-                showDialog(localize(@"Error", nil), @"请填写完整信息");
-                return;
-            }
-
-            NSMutableDictionary *data = [NSMutableDictionary new];
-            data[@"authServer"] = server;
-            data[@"username"] = username;
-            data[@"input"] = password; // 使用 input 字段来传递密码给 authenticator
-
-            id callback = ^(id status, BOOL success) {
-                dispatch_async(dispatch_get_main_queue(), ^(){
-                    // Reuse existing UI handler for login result
-                    [self callbackMicrosoftAuth:status success:success forCell:sender];
-                });
-            };
-
-            // Use the designated initializer; ThirdPartyAuthenticator.h exposes initWithData:
-            [[[ThirdPartyAuthenticator alloc] initWithData:data] loginWithCallback:callback];
-        }]];
-        [controller addAction:[UIAlertAction actionWithTitle:localize(@"Cancel", nil) style:UIAlertActionStyleCancel handler:nil]];
-        controller.popoverPresentationController.sourceView = sender;
-        controller.popoverPresentationController.sourceRect = sender.bounds;
-        [self presentViewController:controller animated:YES completion:nil];
-    }];
-    [picker addAction:actionThirdParty];
-
     UIAlertAction *cancel = [UIAlertAction actionWithTitle:localize(@"Cancel", nil) style:UIAlertActionStyleCancel handler:nil];
     [picker addAction:cancel];
 
@@ -188,7 +165,7 @@
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:localize(@"login.warn.title.localmode", nil) message:localize(@"login.warn.message.localmode", nil) preferredStyle:UIAlertControllerStyleActionSheet];
         alert.popoverPresentationController.sourceView = sender;
         alert.popoverPresentationController.sourceRect = sender.bounds;
-        UIAlertAction *ok = [UIAlertAction actionWithTitle:localize(@"OK", nil) style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){[self actionLoginLocal:sender];}];
+        UIAlertAction *ok = [UIAlertAction actionWithTitle:localize(@"OK", nil) style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {[self actionLoginLocal:sender];}];
         [alert addAction:ok];
         [self presentViewController:alert animated:YES completion:nil];
         return;
@@ -201,10 +178,9 @@
     }];
     [controller addAction:[UIAlertAction actionWithTitle:localize(@"OK", nil) style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSArray *textFields = controller.textFields;
-        UITextField *usernameField = (UITextField *)textFields[0];
+        UITextField *usernameField = textFields[0];
         if (usernameField.text.length < 3 || usernameField.text.length > 16) {
-            UIAlertController *controller = [UIAlertController alertControllerWithTitle:localize(@"Error", nil) message:localize(@"login.error.username.outOfRange", nil) preferredStyle:UIAlertControllerStyleAlert];
-            [controller addAction:[UIAlertAction actionWithTitle:localize(@"OK", nil) style:UIAlertActionStyleDefault handler:nil]];
+            controller.message = localize(@"login.error.username.outOfRange", nil);
             [self presentViewController:controller animated:YES completion:nil];
         } else {
             id callback = ^(id status, BOOL success) {
@@ -222,7 +198,7 @@
     NSURL *url = [NSURL URLWithString:@"https://login.live.com/oauth20_authorize.srf?client_id=00000000402b5328&response_type=code&scope=service%3A%3Auser.auth.xboxlive.com%3A%3AMBI_SSL&redirect_url=https%3A%2F%2Flogin.live.com%2Foauth20_desktop.srf"];
 
     self.authVC =
-    [[ASWebAuthenticationSession alloc] initWithURL:url
+        [[ASWebAuthenticationSession alloc] initWithURL:url
         callbackURLScheme:@"ms-xal-00000000402b5328"
         completionHandler:^(NSURL * _Nullable callbackURL, NSError * _Nullable error)
     {
@@ -232,6 +208,7 @@
             }
             return;
         }
+        // NSLog(@"URL returned = %@", [callbackURL absoluteString]);
 
         NSDictionary *queryItems = [self parseQueryItems:callbackURL.absoluteString];
         if (queryItems[@"code"]) {
@@ -280,15 +257,6 @@
     cell.accessoryView = nil;
 }
 
-- (NSDictionary *)parseQueryItems:(NSString *)url {
-    NSMutableDictionary *result = [NSMutableDictionary new];
-    NSArray<NSURLQueryItem *> *queryItems = [NSURLComponents componentsWithString:url].queryItems;
-    for (NSURLQueryItem *item in queryItems) {
-        result[item.name] = item.value;
-    }
-    return result;
-}
-
 - (void)callbackMicrosoftAuth:(id)status success:(BOOL)success forCell:(UITableViewCell *)cell {
     if (status != nil) {
         if (success) {
@@ -310,10 +278,14 @@
     }
 }
 
-#pragma mark - ASWebAuthenticationPresentationContextProviding
+#pragma mark - UIPopoverPresentationControllerDelegate
+- (UIModalPresentationStyle)adaptivePresentationStyleForPresentationController:(UIPresentationController *)controller traitCollection:(UITraitCollection *)traitCollection {
+    return UIModalPresentationNone;
+}
 
+#pragma mark - ASWebAuthenticationPresentationContextProviding
 - (ASPresentationAnchor)presentationAnchorForWebAuthenticationSession:(ASWebAuthenticationSession *)session {
-    return self.view.window;
+    return UIApplication.sharedApplication.windows.firstObject;
 }
 
 @end
