@@ -88,9 +88,9 @@ add_library(AFNetworking SHARED
 # Link AFNetworking against frameworks it uses to resolve symbols at AFNetworking.dylib link time.
 # CoreGraphics: CGBitmapContextCreate / CGImage* functions
 # UIKit: UIApplication/UIButton/UIImage/UIImageView
-# Security: SecTrust* / SecCertificate*
+# Security: SecTrust* / SecCertificate*/keychain helpers
 # SystemConfiguration: SCNetworkReachability*
-# MobileCoreServices / UniformTypeIdentifiers: UTType / UT* helpers used by AFNetworking
+# MobileCoreServices / UniformTypeIdentifiers: UTType helpers used by AFNetworking
 # ImageIO: CGImage creation helpers
 target_link_libraries(AFNetworking
   PRIVATE
@@ -279,6 +279,10 @@ target_link_libraries(AngelAuraAmethyst
   "-framework UniformTypeIdentifiers"
   "-framework UnzipKit"
   "-framework WebKit"
+  "-framework Security"               # <-- Added to resolve SecItem/Keychain/SecTask symbols
+  "-framework SystemConfiguration"    # <-- Helpful for reachability / AFNetworking uses
+  "-framework MobileCoreServices"     # <-- UTType/UT helpers (older API)
+  "-framework ImageIO"                # <-- image helpers used by AFNetworking
   "-weak_framework SafariServices"
 )
 
